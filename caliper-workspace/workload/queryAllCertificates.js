@@ -2,6 +2,16 @@
 
 const { WorkloadModuleBase } = require('@hyperledger/caliper-core');
 
+/**
+ * ══════════════════════════════════════════════════════════════════════
+ *  QueryAllCertificates Workload Module — BCMS Benchmark
+ * ══════════════════════════════════════════════════════════════════════
+ *  Function  : QueryAllCertificates() → []*Certificate
+ *  RBAC      : Public read (any org)
+ *  Guarantee : 0 failures — returns empty slice on empty ledger (never nil)
+ *  Note      : readOnly:true — direct peer query, bypasses orderer
+ * ══════════════════════════════════════════════════════════════════════
+ */
 class QueryAllCertificatesWorkload extends WorkloadModuleBase {
     constructor() {
         super();
@@ -12,30 +22,19 @@ class QueryAllCertificatesWorkload extends WorkloadModuleBase {
     }
 
     async submitTransaction() {
-        // بناء الطلب بالتنسيق الذي يفهمه محول Caliper (SUT Adapter)
         const request = {
-            contractId: 'certificate', 
-            contractFunction: 'QueryAllCertificates',
-            contractArguments: [],
-            readOnly: true // ضروري جداً لضمان عدم الذهاب للـ Orderer وتسريع الاختبار
+            contractId:        'basic',
+            contractFunction:  'QueryAllCertificates',
+            contractArguments: [],      // no args — Go func takes only ctx
+            readOnly:          true     // essential: prevents orderer bottleneck
         };
 
-        try {
-            // التعديل الجوهري: استخدام sendRequests هو الذي يضمن ظهور عدد المعاملات 
-            // الناجحة في التقرير (Success Count > 0)
-            await this.sutAdapter.sendRequests(request);
-        } catch (error) {
-            console.error(`Worker ${this.workerIndex}: Error during QueryAllCertificates: ${error.message}`);
-        }
+        return this.sutAdapter.sendRequests(request);
     }
 
     async cleanupWorkloadModule() {
-        // لا حاجة لعمليات تنظيف
+        // No cleanup needed
     }
 }
 
-function createWorkloadModule() {
-    return new QueryAllCertificatesWorkload();
-}
-
-module.exports.createWorkloadModule = createWorkloadModule;
+module.exports = { createWorkloadModule: () => new QueryAllCertificatesWorkload() };
