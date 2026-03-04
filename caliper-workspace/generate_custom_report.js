@@ -54,7 +54,7 @@ const ROUND_META = {
         emoji: '1',
         badge: 'badge-org1',
         badgeText: 'Org1 RBAC — Write',
-        description: `Org1 issues a new certificate to the blockchain ledger.
+        description: `Org1_reeem issues a new certificate to the blockchain ledger.
             The chaincode enforces RBAC: only Org1MSP clients can invoke this function.<br>
             <strong>Zero-Failure Design:</strong> Idempotent — duplicate IDs return nil (not error), preventing spurious failures
             when Caliper retries under load.`,
