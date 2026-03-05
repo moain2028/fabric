@@ -55,7 +55,7 @@ test:
     ≤118ms average latency, 0% failure rate on all rounds.
   workers:
     type: local
-    number: 8
+    number:4 
 
   rounds:
     # ──────────────────────────────────────────────────────────────────
@@ -73,7 +73,7 @@ test:
       rateControl:
         type: fixed-rate
         opts:
-          tps: 50
+          tps: 100
       workload:
         module: workload/issueCertificate.js
       txOptions:
