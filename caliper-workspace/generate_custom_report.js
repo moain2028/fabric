@@ -44,7 +44,7 @@ const INPUT_REPORT  = process.argv[2] || path.join(__dirname, 'report.html');
 const OUTPUT_REPORT = process.argv[3] || path.join(__dirname, 'report_custom.html');
 
 const BENCHMARK_META = {
-    title:       'BCMS Certificate Benchmark',
+    title:       'BCMS2 Certificate Benchmark',
     version:     'v4.0',
     dlt:         'Hyperledger Fabric 2.5',
     channel:     'mychannel',
