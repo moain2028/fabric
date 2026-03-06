@@ -7,6 +7,7 @@
     "start": "node src/app.js",
     "dev": "nodemon src/app.js",
     "enroll": "node src/enroll.js",
+    "enroll:abac": "node src/fabric/abacEnroll.js",
     "test": "echo 'No tests defined'"
   },
   "dependencies": {

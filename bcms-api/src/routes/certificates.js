@@ -1,8 +1,23 @@
 /**
  * ============================================================================
- *  BCMS — Certificate Routes
+ *  BCMS — Certificate Routes (ABAC Version)
  *  REST API endpoints for certificate management
- *  Implements the research paper's client application layer
+ *
+ *  التغييرات من RBAC إلى ABAC:
+ *  ────────────────────────────────────────────────────────────────────────
+ *  RBAC القديم:
+ *    - POST /certificates    → getContract('org1')  [Org1MSP فقط]
+ *    - DELETE /certificates  → getContract('org2')  [بناءً على X-Org-MSP header]
+ *    - GET /certificates     → getContract('org1')  [ثابت]
+ *
+ *  ABAC الجديد:
+ *    - POST /certificates    → getContract('issuer')  [role=issuer]
+ *    - DELETE /certificates  → getContract('admin')   [role=admin]
+ *    - POST /verify          → getContract('verifier')| getContract('issuer')
+ *    - GET /certificates     → getContract('issuer')  [عام]
+ *  ────────────────────────────────────────────────────────────────────────
+ *
+ *  يدعم header مخصص: X-User-Role لتحديد الدور في الطلب
  * ============================================================================
  */
 
@@ -12,7 +27,7 @@ const express = require('express');
 const router = express.Router();
 const crypto = require('crypto');
 const { body, param, validationResult } = require('express-validator');
-const { getContract } = require('../fabric/gateway');
+const { getContract, getRoleFromRequest } = require('../fabric/gateway');
 
 // ── Helper: Compute SHA-256 hash matching chaincode logic ─────────────────────
 // H(C) = SHA256(studentID|studentName|degree|issuer|issueDate)
@@ -44,9 +59,13 @@ function parseResponse(result) {
     }
 }
 
-// ── POST /api/v1/certificates — Issue a new certificate ──────────────────────
-// RBAC: Org1 only (enforced in chaincode)
-// Crypto: SHA-256 hash computed server-side if not provided
+// ─────────────────────────────────────────────────────────────────────────────
+//  POST /api/v1/certificates — Issue a new certificate
+//  ABAC: يُستخدم دور 'issuer' — يجب على المستخدم امتلاك role=issuer في شهادته
+//
+//  Header مطلوب: X-User-Role: issuer
+//  (أو يستخدم الافتراضي 'issuer' تلقائياً)
+// ─────────────────────────────────────────────────────────────────────────────
 router.post('/',
     [
         body('id').notEmpty().withMessage('Certificate ID is required'),
@@ -62,11 +81,12 @@ router.post('/',
         const { id, studentID, studentName, degree, issuer, issueDate, signature } = req.body;
 
         try {
-            // Compute SHA-256 hash matching chaincode's ComputeCertHash()
+            // حساب SHA-256 hash مطابق لـ chaincode
             const certHash = computeCertHash(studentID, studentName, degree, issuer, issueDate);
             const sig = signature || `SIG_${id}_${certHash.substring(0, 16)}`;
 
-            const contract = await getContract('org1');
+            // ABAC: استخدام هوية المُصدِر (issuer) للعملية
+            const contract = await getContract('issuer');
             const startTime = Date.now();
 
             await contract.submitTransaction(
@@ -79,25 +99,19 @@ router.post('/',
             res.status(201).json({
                 success: true,
                 message: 'Certificate issued successfully',
+                accessControl: { model: 'ABAC', role: 'issuer' },
                 data: {
-                    id,
-                    studentID,
-                    studentName,
-                    degree,
-                    issuer,
-                    issueDate,
-                    certHash,
-                    signature: sig
+                    id, studentID, studentName, degree,
+                    issuer, issueDate, certHash, signature: sig
                 },
-                performance: {
-                    duration_ms: duration
-                },
+                performance: { duration_ms: duration },
                 timestamp: new Date().toISOString()
             });
         } catch (err) {
             res.status(500).json({
                 success: false,
                 error: err.message,
+                hint: 'Ensure issuer-bcms identity is enrolled with role=issuer:ecert',
                 timestamp: new Date().toISOString()
             });
         }
@@ -105,9 +119,10 @@ router.post('/',
 );
 
 // ── GET /api/v1/certificates — Get all certificates ──────────────────────────
+// لا تتطلب دوراً محدداً — متاحة للجميع
 router.get('/', async (req, res) => {
     try {
-        const contract = await getContract('org1');
+        const contract = await getContract('issuer');
         const startTime = Date.now();
 
         const result = await contract.evaluateTransaction('QueryAllCertificates');
@@ -138,7 +153,7 @@ router.get('/:id',
         if (handleValidation(req, res)) return;
 
         try {
-            const contract = await getContract('org1');
+            const contract = await getContract('issuer');
             const result = await contract.evaluateTransaction('ReadCertificate', req.params.id);
             const cert = parseResponse(result);
 
@@ -170,9 +185,13 @@ router.get('/:id',
     }
 );
 
-// ── POST /api/v1/certificates/:id/verify — Verify a certificate ──────────────
-// RBAC: Public (any org)
-// Crypto: Recomputes SHA-256 and compares with stored hash
+// ─────────────────────────────────────────────────────────────────────────────
+//  POST /api/v1/certificates/:id/verify — Verify a certificate
+//  ABAC: يُسمح لـ verifier أو issuer أو admin
+//
+//  Header اختياري: X-User-Role: verifier | issuer | admin
+//  الافتراضي: 'verifier'
+// ─────────────────────────────────────────────────────────────────────────────
 router.post('/:id/verify',
     [
         param('id').notEmpty(),
@@ -184,7 +203,6 @@ router.post('/:id/verify',
         const { certHash, studentID, studentName, degree, issuer, issueDate } = req.body;
 
         try {
-            // Allow hash to be computed from fields if not directly provided
             let hashToVerify = certHash;
             if (!hashToVerify && studentID && studentName && degree && issuer && issueDate) {
                 hashToVerify = computeCertHash(studentID, studentName, degree, issuer, issueDate);
@@ -192,20 +210,31 @@ router.post('/:id/verify',
             if (!hashToVerify) {
                 return res.status(400).json({
                     success: false,
-                    error: 'Either certHash or all certificate fields (studentID, studentName, degree, issuer, issueDate) must be provided'
+                    error: 'Either certHash or all certificate fields must be provided'
                 });
             }
 
-            const contract = await getContract('org1');
+            // ABAC: استخدام الدور من Header أو الافتراضي 'verifier'
+            // الأدوار المسموح بها: verifier, issuer, admin
+            const role = getRoleFromRequest(req, 'verifier');
+            const validVerifyRoles = ['verifier', 'issuer', 'admin'];
+            const verifyRole = validVerifyRoles.includes(role) ? role : 'verifier';
+
+            const contract = await getContract(verifyRole);
             const startTime = Date.now();
 
-            const result = await contract.evaluateTransaction('VerifyCertificate', req.params.id, hashToVerify);
+            const result = await contract.evaluateTransaction(
+                'VerifyCertificate',
+                req.params.id,
+                hashToVerify
+            );
             const duration = Date.now() - startTime;
 
             const verificationResult = parseResponse(result);
 
             res.json({
                 success: true,
+                accessControl: { model: 'ABAC', role: verifyRole },
                 data: verificationResult,
                 performance: { duration_ms: duration },
                 timestamp: new Date().toISOString()
@@ -220,17 +249,22 @@ router.post('/:id/verify',
     }
 );
 
-// ── DELETE /api/v1/certificates/:id — Revoke a certificate ───────────────────
-// RBAC: Org1 or Org2 (enforced in chaincode)
+// ─────────────────────────────────────────────────────────────────────────────
+//  DELETE /api/v1/certificates/:id — Revoke a certificate
+//  ABAC: يتطلب role=admin — يجب استخدام هوية admin-bcms
+//
+//  Header مطلوب: X-User-Role: admin
+//  ملاحظة: في ABAC لا نحتاج X-Org-MSP — نستخدم X-User-Role بدلاً منه
+// ─────────────────────────────────────────────────────────────────────────────
 router.delete('/:id',
     [param('id').notEmpty()],
     async (req, res) => {
         if (handleValidation(req, res)) return;
 
         try {
-            // Use org2 by default for revocation (as per RBAC design)
-            const org = req.headers['x-org-msp'] === 'Org1MSP' ? 'org1' : 'org2';
-            const contract = await getContract(org);
+            // ABAC: استخدام هوية المسؤول (admin) للإلغاء
+            // لا نحتاج X-Org-MSP header بعد الآن
+            const contract = await getContract('admin');
             const startTime = Date.now();
 
             await contract.submitTransaction('RevokeCertificate', req.params.id);
@@ -239,6 +273,7 @@ router.delete('/:id',
             res.json({
                 success: true,
                 message: `Certificate ${req.params.id} revoked successfully`,
+                accessControl: { model: 'ABAC', role: 'admin' },
                 performance: { duration_ms: duration },
                 timestamp: new Date().toISOString()
             });
@@ -246,6 +281,7 @@ router.delete('/:id',
             res.status(500).json({
                 success: false,
                 error: err.message,
+                hint: 'Ensure admin-bcms identity is enrolled with role=admin:ecert',
                 timestamp: new Date().toISOString()
             });
         }
@@ -259,8 +295,11 @@ router.get('/student/:studentID',
         if (handleValidation(req, res)) return;
 
         try {
-            const contract = await getContract('org1');
-            const result = await contract.evaluateTransaction('GetCertificatesByStudent', req.params.studentID);
+            const contract = await getContract('issuer');
+            const result = await contract.evaluateTransaction(
+                'GetCertificatesByStudent',
+                req.params.studentID
+            );
             const certificates = parseResponse(result) || [];
 
             res.json({
@@ -287,8 +326,11 @@ router.get('/issuer/:issuer',
         if (handleValidation(req, res)) return;
 
         try {
-            const contract = await getContract('org1');
-            const result = await contract.evaluateTransaction('GetCertificatesByIssuer', req.params.issuer);
+            const contract = await getContract('issuer');
+            const result = await contract.evaluateTransaction(
+                'GetCertificatesByIssuer',
+                req.params.issuer
+            );
             const certificates = parseResponse(result) || [];
 
             res.json({
@@ -315,8 +357,11 @@ router.get('/:id/history',
         if (handleValidation(req, res)) return;
 
         try {
-            const contract = await getContract('org1');
-            const result = await contract.evaluateTransaction('GetCertificateHistory', req.params.id);
+            const contract = await getContract('issuer');
+            const result = await contract.evaluateTransaction(
+                'GetCertificateHistory',
+                req.params.id
+            );
             const history = parseResponse(result) || [];
 
             res.json({
@@ -337,7 +382,6 @@ router.get('/:id/history',
 );
 
 // ── POST /api/v1/certificates/hash/compute — Compute certificate hash ─────────
-// Utility endpoint for clients to compute hash without local crypto
 router.post('/hash/compute',
     [
         body('studentID').notEmpty(),
