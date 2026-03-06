@@ -51,7 +51,7 @@ test:
       rateControl:
         type: fixed-rate
         opts:
-          tps: 100  # تم التصحيح من 50 إلى 100 بناءً على الترويسة
+          tps: 100  
       workload:
         module: workload/verifyCertificate.js
       txOptions:
@@ -99,7 +99,7 @@ test:
       rateControl:
         type: fixed-rate
         opts:
-          tps: 75  # تم التصحيح من 50 إلى 75 بناءً على الترويسة
+          tps: 75  
       workload:
         module: workload/getCertificatesByStudent.js
       txOptions:
