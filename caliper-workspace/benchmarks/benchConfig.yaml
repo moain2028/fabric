@@ -1,50 +1,17 @@
-# ============================================================================
-#  BCMS — Blockchain Certificate Management System
-#  Hyperledger Caliper Benchmark Configuration v4.0
-#  Research Paper: "Enhancing Trust and Transparency in Education Using
-#                   Blockchain: A Hyperledger Fabric-Based Framework"
-#
-#  Rounds:
-#    1. IssueCertificate           (Org1 RBAC Write)     @ 50  TPS / 30s
-#    2. VerifyCertificate          (Public ReadOnly)      @ 100 TPS / 30s
-#    3. QueryAllCertificates       (Public ReadOnly)      @ 50  TPS / 30s
-#    4. RevokeCertificate          (Org2 RBAC Write)      @ 50  TPS / 30s
-#    5. GetCertificatesByStudent   (Public ReadOnly)      @ 75  TPS / 30s
-#    6. GetAuditLogs               (Public ReadOnly)      @ 30  TPS / 30s
-#
-#  All rounds designed for 0 failures:
-#    - Write rounds: idempotent chaincode (duplicate = nil, not error)
-#    - Read rounds:  readOnly=true bypasses orderer, returns empty not error
-#
-#  Resource Monitoring:
-#    - Docker monitor enabled for all Fabric network containers
-#    - Captures CPU % and Memory (MB) per container per round
-#    - Interval: 1000ms (1 second) sampling rate
-# ============================================================================
-
-# ============================================================================
-# RESOURCE MONITORS — Docker Container CPU & Memory Monitoring
-# This section is REQUIRED for Resource Utilization data to appear in report
-# Without this, Caliper skips all container monitoring entirely
-# ============================================================================
 monitors:
   resource:
-    - module: docker
-      options:
-        interval: 1
-        containers:
-          # Orderer
-          - orderer.example.com
-          # Org1 Peer & CouchDB
-          - peer0.org1.example.com
-          - couchdb0
-          # Org2 Peer & CouchDB
-          - peer0.org2.example.com
-          - couchdb1
-          # Certificate Authorities
-          - ca_org1
-          - ca_org2
-          - ca_orderer
+  - module: docker
+    options:
+      interval: 1
+      containers:
+        - orderer.example.com
+        - peer0.org1.example.com
+        - couchdb0
+        - peer0.org2.example.com
+        - couchdb1
+        - ca_org1
+        - ca_org2
+        - ca_orderer
 
 test:
   name: bcms-certificate-benchmark-v4
@@ -56,19 +23,14 @@ test:
   workers:
     type: local
     number: 8
-
   rounds:
     # ──────────────────────────────────────────────────────────────────
     # Round 1: IssueCertificate — Org1 MSP Write Operation
-    # Paper target: 250 TPS, avg latency 118ms
     # ──────────────────────────────────────────────────────────────────
     - label: IssueCertificate
       description: >
         Org1 issues educational certificates to the Hyperledger Fabric ledger.
         RBAC enforced: only Org1MSP clients can invoke.
-        Cryptographic: SHA-256 H(C) = SHA256(studentID|name|degree|issuer|date).
-        Model: T = (IDs, IDc, S, t, H(C)) as per research paper §3.2.
-        Zero-failure design: idempotent — duplicate IDs return nil (not error).
       txDuration: 30
       rateControl:
         type: fixed-rate
@@ -81,19 +43,15 @@ test:
 
     # ──────────────────────────────────────────────────────────────────
     # Round 2: VerifyCertificate — Public ReadOnly Operation
-    # Paper target: High TPS (read-only, direct peer query)
     # ──────────────────────────────────────────────────────────────────
     - label: VerifyCertificate
       description: >
-        Verify certificate authenticity by recomputing SHA-256 hash and comparing
-        with stored H(C) on the ledger. Public read — any org can verify.
-        readOnly:true bypasses orderer for maximum throughput.
-        Zero-failure design: returns false (not error) when cert not found.
+        Verify certificate authenticity by recomputing SHA-256 hash.
       txDuration: 30
       rateControl:
         type: fixed-rate
         opts:
-          tps: 50
+          tps: 100  # تم التصحيح من 50 إلى 100 بناءً على الترويسة
       workload:
         module: workload/verifyCertificate.js
       txOptions:
@@ -101,14 +59,10 @@ test:
 
     # ──────────────────────────────────────────────────────────────────
     # Round 3: QueryAllCertificates — CouchDB Rich Query
-    # Tests ledger query performance with full result set
     # ──────────────────────────────────────────────────────────────────
     - label: QueryAllCertificates
       description: >
         Rich ledger query returning all certificates sorted by issue date.
-        Uses CouchDB selector with fallback to GetStateByRange for LevelDB.
-        readOnly:true — direct peer query, no orderer involvement.
-        Zero-failure design: returns empty slice on empty ledger.
       txDuration: 30
       rateControl:
         type: fixed-rate
@@ -121,14 +75,10 @@ test:
 
     # ──────────────────────────────────────────────────────────────────
     # Round 4: RevokeCertificate — Org2 MSP Write Operation
-    # Tests write transaction with RBAC enforcement from Org2
     # ──────────────────────────────────────────────────────────────────
     - label: RevokeCertificate
       description: >
-        Org2 revokes certificates on the ledger — RBAC: OR(Org1MSP.peer, Org2MSP.peer).
-        Marks IsRevoked=true, records RevokedBy and RevokedAt metadata.
-        Zero-failure design: idempotent — nil when cert not found or already revoked.
-        Write audit log on every revocation.
+        Org2 revokes certificates on the ledger.
       txDuration: 30
       rateControl:
         type: fixed-rate
@@ -141,19 +91,15 @@ test:
 
     # ──────────────────────────────────────────────────────────────────
     # Round 5: GetCertificatesByStudent — Student-Indexed Query
-    # Tests targeted query performance for per-student certificate lookup
     # ──────────────────────────────────────────────────────────────────
     - label: GetCertificatesByStudent
       description: >
         Query all certificates for a specific student using CouchDB rich query.
-        Selector: {docType: "certificate", StudentID: "<id>"}.
-        Public read — any organization can query.
-        Zero-failure design: returns empty slice (never nil).
       txDuration: 30
       rateControl:
         type: fixed-rate
         opts:
-          tps: 50
+          tps: 75  # تم التصحيح من 50 إلى 75 بناءً على الترويسة
       workload:
         module: workload/getCertificatesByStudent.js
       txOptions:
@@ -161,14 +107,10 @@ test:
 
     # ──────────────────────────────────────────────────────────────────
     # Round 6: GetAuditLogs — Audit Trail Query
-    # Tests audit log retrieval — key feature of the BCMS framework
     # ──────────────────────────────────────────────────────────────────
     - label: GetAuditLogs
       description: >
         Query the immutable audit log trail from the ledger.
-        Returns all AuditLog entries sorted by timestamp descending.
-        Public read — any organization can inspect the audit trail.
-        Zero-failure design: returns empty slice (never nil).
       txDuration: 30
       rateControl:
         type: fixed-rate
