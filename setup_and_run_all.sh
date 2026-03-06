@@ -396,7 +396,7 @@ echo "   Round 1: IssueCertificate     @ 50 TPS  / 30s"
 echo "   Round 2: VerifyCertificate    @ 100 TPS / 30s"
 echo "   Round 3: QueryAllCertificates @ 50 TPS  / 30s"
 echo "   Round 4: RevokeCertificate    @ 50 TPS  / 30s"
-
+sudo chmod 666 /var/run/docker.sock
 # FIX #6: Added --caliper-fabric-gateway-enabled for Fabric 2.5 compat
 npx caliper launch manager \
     --caliper-workspace . \
