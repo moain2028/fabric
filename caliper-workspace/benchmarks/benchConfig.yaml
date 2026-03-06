@@ -55,7 +55,7 @@ test:
     ≤118ms average latency, 0% failure rate on all rounds.
   workers:
     type: local
-    number:8
+    number: 8
 
   rounds:
     # ──────────────────────────────────────────────────────────────────
