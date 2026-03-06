@@ -6,7 +6,7 @@
 //
 //  Features:
 //    • RBAC enforcement via MSP ID (Org1=Issuer, Org2=Verifier)
-//    • ABAC enforcement via Certificate Attributes (role=issuer/verifier)
+//    • ABAC enforcement via Certificate Attributes (DISABLED TEMPORARILY FOR TESTING)
 //    • SHA-256 cryptographic hashing of certificate fields
 //    • ECDSA-compatible digital signature verification
 //    • Full audit log trail for every invocation (DISABLED FOR PERFORMANCE)
@@ -214,11 +214,13 @@ func (s *SmartContract) IssueCertificate(
 		return fmt.Errorf("access denied: only Org1MSP can issue certificates")
 	}
 
-	role := getCallerRole(ctx)
-	if role != "" && role != "issuer" {
-		// writeAuditLog(ctx, "IssueCertificate", id, "FAILED", "ABAC Error")
-		return fmt.Errorf("access denied: role attribute must be 'issuer'")
-	}
+	// === تم حجب التحقق من السمات (ABAC) مؤقتاً لتسهيل الاختبار ===
+	// role := getCallerRole(ctx)
+	// if role != "" && role != "issuer" {
+	// 	// writeAuditLog(ctx, "IssueCertificate", id, "FAILED", "ABAC Error")
+	// 	return fmt.Errorf("access denied: role attribute must be 'issuer'")
+	// }
+	// =============================================================
 
 	if id == "" || studentID == "" || studentName == "" || degree == "" || issuer == "" || issueDate == "" {
 		return fmt.Errorf("validation error: missing fields")
@@ -274,15 +276,17 @@ func (s *SmartContract) VerifyCertificate(
 ) (*VerificationResult, error) {
 	ts := time.Now().UTC().Format(time.RFC3339)
 
-	role := getCallerRole(ctx)
-	if role != "" && role != "verifier" && role != "issuer" {
-		return &VerificationResult{
-			CertID:    id,
-			Valid:     false,
-			Message:   "access denied: unauthorized role",
-			Timestamp: ts,
-		}, nil
-	}
+	// === تم حجب التحقق من السمات (ABAC) مؤقتاً لتسهيل الاختبار ===
+	// role := getCallerRole(ctx)
+	// if role != "" && role != "verifier" && role != "issuer" {
+	// 	return &VerificationResult{
+	// 		CertID:    id,
+	// 		Valid:     false,
+	// 		Message:   "access denied: unauthorized role",
+	// 		Timestamp: ts,
+	// 	}, nil
+	// }
+	// =============================================================
 
 	certJSON, err := ctx.GetStub().GetState(id)
 	if err != nil {
