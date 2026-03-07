@@ -4,14 +4,19 @@ const { WorkloadModuleBase } = require('@hyperledger/caliper-core');
 
 /**
  * ══════════════════════════════════════════════════════════════════════
- *  RevokeCertificate Workload Module — BCMS Benchmark
+ *  RevokeCertificate Workload Module — BCMS ABAC Benchmark v5.0
  * ══════════════════════════════════════════════════════════════════════
  *  Function  : RevokeCertificate(id) → error
- *  RBAC      : Org2MSP authorized (policy: OR('Org1MSP.peer','Org2MSP.peer'))
- *  Guarantee : 0 failures — idempotent (nil when cert not found or revoked)
- *  Invoker   : User1@org2.example.com
+ *  ABAC      : role=admin or role=issuer required in X.509 ecert
+ *  NOTE      : User1@org2 is used as invoker (standard, no role attr)
+ *              For a full ABAC test with Verifier1@org2 use that identity.
+ *              Zero-failure: nil when cert not found or already revoked.
  * ══════════════════════════════════════════════════════════════════════
  */
+
+const CONTRACT = 'basic';
+const FUNCTION = 'RevokeCertificate';
+
 class RevokeCertificateWorkload extends WorkloadModuleBase {
     constructor() {
         super();
@@ -25,24 +30,18 @@ class RevokeCertificateWorkload extends WorkloadModuleBase {
 
     async submitTransaction() {
         this.txIndex++;
-        const workerIdx = this.workerIndex || 0;
-        // Revoke certificates issued in the IssueCertificate round
-        // Uses same certID pattern as IssueCertificate workload
-        const certID = `CERT_${workerIdx}_${this.txIndex}`;
+        const w      = this.workerIndex || 0;
+        const certID = `CERT_${w}_${this.txIndex}`;
 
-        const request = {
-            contractId:        'basic',
-            contractFunction:  'RevokeCertificate',
+        return this.sutAdapter.sendRequests({
+            contractId:        CONTRACT,
+            contractFunction:  FUNCTION,
             contractArguments: [certID],
-            readOnly:          false    // write transaction — goes through orderer
-        };
-
-        return this.sutAdapter.sendRequests(request);
+            readOnly:          false
+        });
     }
 
-    async cleanupWorkloadModule() {
-        // No cleanup needed — idempotent design handles duplicates
-    }
+    async cleanupWorkloadModule() {}
 }
 
 module.exports = { createWorkloadModule: () => new RevokeCertificateWorkload() };
