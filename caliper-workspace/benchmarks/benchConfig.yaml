@@ -47,10 +47,10 @@ monitors:
           - ca_orderer
 
 test:
-  name: bcms-certificate-benchmark-v4
+  name: bcms-certificate-benchmark-ABAC
   description: >
     BCMS Full Benchmark Suite — Research Paper Implementation.
-    Tests all 6 chaincode functions across RBAC, ABAC, SHA-256 crypto,
+    Tests all 6 chaincode functions across, ABAC, SHA-256 crypto,
     and audit logging. Target: ≥250 TPS IssueCertificate (matching paper),
     ≤118ms average latency, 0% failure rate on all rounds.
   workers:
