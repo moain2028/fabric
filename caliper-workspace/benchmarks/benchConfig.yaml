@@ -152,7 +152,7 @@ test:
       txDuration: 30
       rateControl:
         type: fixed-rate
-         opts:
+        opts:
           tps: 75
       workload:
         module: workload/getCertificatesByStudent.js
